@@ -1,0 +1,95 @@
+outDir: &outDir output
+#cude device to use in PCI ID order
+cudaDevice : 1
+
+#*************************************************************
+#************** crawl image from image search engine *********
+#*************************************************************
+
+search:
+  enable: true        #enable serach module
+  engine: yandex      #image search engine, today support yandex, more will come in the future
+  targetDir: *outDir  #path of the target directory for download
+  debug : false       #show actions in chrome browser visible or not
+  minResolution: 2    #Minimum image resolution in MegaPixel
+  searchs:            #list of search to perform [search request, number of images]
+    - [photo of a man, 20]
+    - [asian man, 10]
+
+
+#*************************************************************
+#***************** remove duplicate downloads ****************
+#*************************************************************
+
+#isolate image downloaded several times
+duplicateFilter:
+  enable: true       #enable this filter
+  sourceDir: *outDir  #where are the file to analyze
+  threshold: 5        #hash distance, below image are considered identical
+
+
+#*************************************************************
+#*********************** Crop & Resize    ********************
+#*************************************************************
+
+cropAndResize:
+  enable: true          #enable this feature
+  sourceDir: *outDir    #where are the file to analyze
+  #Kohya doesn't like very large image
+  resize:
+    enable: true        #enable large image resize
+    maxDimension: 1024  #homothetic resizing to this max dimension
+  #crop the x% of biggest face in the picture
+  #usefull to learn a person
+  faceCrop:
+    enable: true              #enable face crop
+    percentageToFaceCrop: 30  #percentage of image to face crop
+    minCropDimension : 512
+  cropBorders:
+    enable: true
+    percentageToCrop : 10
+
+
+
+
+
+#*************************************************************
+#****** Questions and answer filter + captionning ************
+#*************************************************************
+
+#filter the image based on questions and answers
+#caption the images
+lavisFilterAndCaption:
+  enable: true        #enable this filter
+  sourceDir: *outDir    #where are the file to analyze
+  #list of question and expected answers, if answer of lavis not in expected answer,
+  #image will be mvoe to discarded foldere
+  questions:
+    - question: "is it a man?"
+      expectedAnswers: ["yes","man"]
+
+    - question: "number of person?"
+      expectedAnswers: ["1","one"]
+
+    - question: "face visible?"
+      expectedAnswers: ["yes"]
+
+    - question: "is it a color photo?"
+      expectedAnswers: ["yes"]
+  #template for captionning
+  #Question between { }, 3 arguments expected, the question, min answer length and max answer length
+  caption: "a man,  {describe face emotion.,1,1} face, {ethnicity of the person,1,1} ethnicty, {describe the clothes.,5,8}, {describe hair., 1,1} hairs,  {describe the background.,5,8} background"
+
+
+
+#*************************************************************
+#*********************** Watermark filter ********************
+#*************************************************************
+
+#remove watermarked image
+watermarkFilter:
+  enable: true
+  sourceDir: *outDir    #where are the file to analyze  
+  #watermak search will be performed on a temporary center crop
+  #this avoid to consider signature and small corner overlay text
+  searchCropPercent: 70
