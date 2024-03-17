@@ -85,7 +85,8 @@ python magicDataset.py your_configuration_file.yaml
 - **Crop Borders**: Refines image focus by cropping borders by a specified percentage.
 
 ### LAVIS Filter and Captioning
-- Filters images and generates captions using LAVIS based on question-and-answer pairs and predefined templates.
+- Filters images based on LAVIS question / expected answers
+- Generates captions using LAVIS based on question-and-answer pairs and predefined templates.
 
 ### Watermark Filter
 - Removes watermarked images to clean the dataset, focusing on a central crop for effective watermark detection.
