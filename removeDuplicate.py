@@ -56,6 +56,4 @@ def remove_duplicate_images(base_folder, hash_size=8, distance_threshold=5):
                     relative_path = os.path.relpath(filepath, base_folder)
                     hashes[hash_val] = relative_path
 
-# Example usage
-base_folder = 'path/to/your/images'
-remove_duplicate_images(base_folder, hash_size=8, distance_threshold=5)
+

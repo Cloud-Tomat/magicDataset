@@ -7,7 +7,7 @@ cudaDevice : 1
 #*************************************************************
 
 search:
-  enable: true        #enable serach module
+  enable: false        #enable serach module
   engine: yandex      #image search engine, today support yandex, more will come in the future
   targetDir: *outDir  #path of the target directory for download
   debug : false       #show actions in chrome browser visible or not
@@ -23,7 +23,7 @@ search:
 
 #isolate image downloaded several times
 duplicateFilter:
-  enable: true       #enable this filter
+  enable: false       #enable this filter
   sourceDir: *outDir  #where are the file to analyze
   threshold: 5        #hash distance, below image are considered identical
 
@@ -60,7 +60,7 @@ cropAndResize:
 #filter the image based on questions and answers
 #caption the images
 lavisFilterAndCaption:
-  enable: true        #enable this filter
+  enable: false        #enable this filter
   sourceDir: *outDir    #where are the file to analyze
   #list of question and expected answers, if answer of lavis not in expected answer,
   #image will be mvoe to discarded foldere
@@ -88,7 +88,7 @@ lavisFilterAndCaption:
 
 #remove watermarked image
 watermarkFilter:
-  enable: true
+  enable: false
   sourceDir: *outDir    #where are the file to analyze  
   #watermak search will be performed on a temporary center crop
   #this avoid to consider signature and small corner overlay text

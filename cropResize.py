@@ -79,37 +79,55 @@ def processFaces(config, source_dir, corrupted_folder, border=100):
     selected_files = files_faces_locations[:num_files_to_modify]
 
     # Process selected images
+    # Process selected images
     for filename, _, face_location in selected_files:
         if filename in corruptedFiles:
             continue
         image_path = os.path.join(source_dir, filename)
         with Image.open(image_path) as img:
-            original_height, original_width = img.size
+            original_width, original_height = img.size
             top, right, bottom, left = face_location
 
-            # Apply border, ensuring within image bounds
-            borderX=0.3*(right-left)
-            borderY=0.3*(bottom-top)
-            top, bottom = max(top - borderY, 0), min(bottom + borderY, original_height)
-            left, right = max(left - borderX, 0), min(right + borderX, original_width)
+            # Calculate initial crop dimensions with added border
+            borderX = 0.3 * (right - left)
+            borderY = 0.3 * (bottom - top)
+            left = max(left - borderX, 0)
+            right = min(right + borderX, original_width)
+            top = max(top - borderY, 0)
+            bottom = min(bottom + borderY, original_height)
 
-            # Ensure minimum crop dimensions, adjusting if necessary
-            width, height = right - left, bottom - top
+            # Calculate the actual width and height after adding the border
+            width = right - left
+            height = bottom - top
+
+            # Ensure minimum crop dimensions
             if width < min_crop_dimension:
-                extra = (min_crop_dimension - width) // 2
-                left, right = max(left - extra, 0), min(right + extra, original_width)
+                shortfall = min_crop_dimension - width
+                # Adjust left and right, ensuring not to exceed the image bounds
+                left = max(left - shortfall / 2, 0)
+                right = min(right + shortfall / 2, original_width)
+                if right - left < min_crop_dimension:  # Check if adjustments were not enough
+                    if left == 0:  # If left is at bound, extend right as much as possible
+                        right = min_crop_dimension
+                    if right == original_width:  # If right is at bound, extend left as much as possible
+                        left = original_width - min_crop_dimension
+
             if height < min_crop_dimension:
-                extra = (min_crop_dimension - height) // 2
-                top, bottom = max(top - extra, 0), min(bottom + extra, original_height)
+                shortfall = min_crop_dimension - height
+                # Adjust top and bottom, ensuring not to exceed the image bounds
+                top = max(top - shortfall / 2, 0)
+                bottom = min(bottom + shortfall / 2, original_height)
+                if bottom - top < min_crop_dimension:  # Check if adjustments were not enough
+                    if top == 0:  # If top is at bound, extend bottom as much as possible
+                        bottom = min_crop_dimension
+                    if bottom == original_height:  # If bottom is at bound, extend top as much as possible
+                        top = original_height - min_crop_dimension
 
-            # Adjust for over-expansion
-            left, right = max(left, 0), min(right, original_width)
-            top, bottom = max(top, 0), min(bottom, original_height)
-
-            # Crop and save the image
+            # Final cropping operation
             cropped_image = img.crop((left, top, right, bottom))
             cropped_image.save(image_path)
             modified_files.append(filename)
+
 
     return modified_files
 
