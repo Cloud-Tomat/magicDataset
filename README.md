@@ -2,6 +2,73 @@
 
 This tool automates the generation of image datasets for deep learning purposes by crawling images from Yandex image search. It is designed to streamline the process of preparing datasets optimized for deep learning models through various features including downloading, duplicate filtering, cropping, resizing, and more.
 
+## Installation Guide
+
+This guide provides step-by-step instructions for setting up the project on a Windows machine. Follow these steps to clone the repository, set up a Python virtual environment, and install the necessary dependencies.
+
+### Prerequisites
+
+Ensure you have the following installed:
+- Git ([Download Git](https://git-scm.com/download/win))
+- Python 3 ([Download Python](https://www.python.org/downloads/))
+- NVIDIA GPU compatible with CUDA
+- Chrome browser 
+
+### Clone the Repository
+
+First, clone the repository using Git. Open your command prompt (CMD) or PowerShell, navigate to the directory where you want to clone the repository, and run:
+
+```cmd
+git clone https://github.com/Cloud-Tomat/magicDataset
+cd magicDataset
+```
+
+### Set Up a Virtual Environment
+
+Next, create a Python virtual environment in the repository directory. This environment will be used to install and isolate the project's Python dependencies.
+
+```cmd
+python -m venv magicDataset
+```
+
+Activate the virtual environment:
+
+```cmd
+.\magicDataset\Scripts\activate
+```
+
+You should now see `(magicDataset)` at the beginning of your command prompt line, indicating that the virtual environment is activated.
+
+### Install Dependencies
+
+Install torch with CUDA support
+
+```cmd
+pip install torch==2.2.1+cu121 -f https://download.pytorch.org/whl/torch_stable.html
+```
+
+Then, install the rest of the dependencies from your `requirement.txt` file:
+
+```cmd
+pip install -r requirement.txt
+```
+
+## Running the Application
+
+copy exampleConf.yaml to a new file
+adapt the content to you need, the yaml is heavily commented
+
+Activate the virtual environment if not already done
+
+```cmd
+.\magicDataset\Scripts\activate
+```
+
+run the script
+```cmd
+python magicDataset.py your_configuration_file.yaml
+```
+
 ## Features
 
 ### Image Crawling
