@@ -1,10 +1,23 @@
 # Image Dataset Generator for Deep Learning
 
-This tool automates the generation of image datasets for deep learning purposes by crawling images from Yandex image search. It is designed to streamline the process of preparing datasets optimized for deep learning models through various features including downloading, duplicate filtering, cropping, resizing, and more.
+Deep Learning generative AI training requires a large image dataset; the quality of the dataset significantly influences the quality of the results. Many datasets are available for download, but most of them are synthetic (AI-generated). The goal here is to be able to generate a large image dataset from the real world.
+
+The main problem we face is the difficulty of legally sharing large image datasets, as most images on the internet are copyrighted.
+
+The tool we propose here automates the following processes:
+* Download a large dataset of images based on automation of a set of searches on web image search engines.
+* Exclude images not suitable for training:
+  - Remove images too similar based on their perceptual hash distance.
+  - Remove watermarked images.
+  - Filter using lavis img2text question/expected answer, allowing to keep only the images representing what you want to train for.
+* Crop & Resize:
+  - Downsample very large images.
+  - Face crop.
+  - Remove borders.
+
+
 
 ## Installation Guide
-
-This guide provides step-by-step instructions for setting up the project on a Windows machine. Follow these steps to clone the repository, set up a Python virtual environment, and install the necessary dependencies.
 
 ### Prerequisites
 
@@ -33,14 +46,20 @@ python -m venv magicDataset
 
 Activate the virtual environment:
 
+* Windows
 ```cmd
 .\magicDataset\Scripts\activate
 ```
-
+* Linux
+```cmd
+source ./magicDataset/bin/activate
+```
+ 
 You should now see `(magicDataset)` at the beginning of your command prompt line, indicating that the virtual environment is activated.
 
 ### Install Dependencies
 
+* Windows
 Install torch with CUDA support
 
 ```cmd
@@ -52,6 +71,8 @@ Then, install the rest of the dependencies from your `requirement.txt` file:
 ```cmd
 pip install -r requirement.txt
 ```
+* Linux
+TODO
 
 ## Running the Application
 
