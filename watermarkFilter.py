@@ -4,7 +4,8 @@ import os
 import shutil
 import tools  # Assuming this is a helper module you've created
 import numpy as np
-
+from tqdm import tqdm
+import logger
 reader = easyocr.Reader(['en'])  # 'en' for English
 
 def detect_text(image_path, cropSizePercent,corrupted_folder):
@@ -50,7 +51,9 @@ def process_images(params):
     corrupted_folder = tools.createFolders(base_folder, "corrupted")
 
     # Iterate through all files in the directory
-    for filename in os.listdir(base_folder):
+    files=os.listdir(base_folder)
+    removed=0
+    for filename in tqdm(files,"detecting watermark"):
         print("processing ", filename)
         # Construct the full file path
         file_path = os.path.join(base_folder, filename)
@@ -59,7 +62,7 @@ def process_images(params):
         if os.path.isdir(file_path):
             continue
         
-        if not filename.endswith('.jpg'):
+        if not filename.endswith('.jpg') and not filename.endswith("png"):
             continue
 
 
@@ -74,4 +77,5 @@ def process_images(params):
         if has_text:
             print(f"Text detected in {filename}, moving to 'watermarked' folder.")
             shutil.move(file_path, os.path.join(excluded_folder, filename))
-
+            removed+=1
+    logger.console(f"Moved {removed} files to f{excluded_folder} folder")

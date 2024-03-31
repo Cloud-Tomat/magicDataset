@@ -1,171 +1,253 @@
 import os
-from PIL import Image
+from PIL import Image,ImageDraw
 import numpy as np
 import tools
 import shutil
 import face_recognition
+from tqdm import tqdm
+import logger
 
-
-def resize_image(image, max_dimension):
-    original_width, original_height = image.size
-    ratio = min(max_dimension / original_width, max_dimension / original_height)
-    new_size = (int(original_width * ratio), int(original_height * ratio))
-    resized_image = image.resize(new_size, Image.LANCZOS)
-    return resized_image
-
-def crop_borders(image, percentage_to_crop):
-    width, height = image.size
-    crop_value_width = int(width * (percentage_to_crop / 100))
-    crop_value_height = int(height * (percentage_to_crop / 100))
-    cropped_image = image.crop((crop_value_width, crop_value_height, width - crop_value_width, height - crop_value_height))
-    return cropped_image
-
-def processFaces(config, source_dir, corrupted_folder, border=100):
-    corruptedFiles=[]
+def locate_and_expand_face(pil_image, expand_percentage=0):
+    """
+    Locates a face in a PIL image and optionally expands the detection box.
+    Tries a 90° rotation if no face is detected, but returns coordinates for the original orientation.
     
-    percentageToFaceCrop = config['percentageToFaceCrop']
-    min_crop_dimension = config['minCropDimension']
+    Parameters:
+    - pil_image: Input PIL image.
+    - expand_percentage: How much to expand the detection box by (percentage).
+    
+    Returns:
+    - The coordinates of the (optionally expanded) face box in the original image's orientation.
+    """
+    def detect_faces(image_array):
+        # Attempt to detect faces in the given image array
+        return face_recognition.face_locations(image_array, model="large")
 
-    # List to hold filenames, face sizes, and locations
-    files_faces_locations = []
-    # List of filenames to be modified
-    modified_files = []
+    def adjust_box_for_rotation(box, rotation_degree):
+        """
+        Adjusts the coordinates of the detected face box for the original image's orientation
+        after a 90-degree rotation was used for detection.
+        
+        Parameters:
+        - box: The detected face box coordinates as (top, right, bottom, left).
+        - rotation_degree: The degree of rotation applied to the image for face detection.
+        
+        Returns:
+        - Adjusted face box coordinates in the orientation of the original image.
+        """
+        left, top, right, bottom = box
+        if rotation_degree == 0:
+            return box
+        elif  rotation_degree== 90:
+            newLeft=min(pil_image.width-top,pil_image.width-bottom)
+            newRight=max(pil_image.width-top,pil_image.width-bottom)
+            newTop=min(pil_image.height - right,pil_image.height - left)
+            newBottom=max(pil_image.height - right,pil_image.height - left)
+            return [newLeft,newTop,newRight,newBottom]
+        elif rotation_degree==-90:
+            newLeft=top
+            newRight=bottom
+            newTop=min(pil_image.height - right,pil_image.height - left)
+            newBottom=max(pil_image.height - right,pil_image.height - left)  
+            return [newLeft,newTop,newRight,newBottom]
+        return box
 
-    # Function to resize image for faster face detection
-    def resize_image_for_detection(image):
-        max_dimension = 756
-        original_size = image.size
-        max_original_dimension = max(original_size)
-        scale = max_dimension / max_original_dimension if max_original_dimension > max_dimension else 1
-        if scale < 1:  # Only resize if necessary
-            new_size = (int(original_size[0] * scale), int(original_size[1] * scale))
-            resized_image = image.resize(new_size, Image.LANCZOS)
-            return resized_image, scale
-        return image, scale
+    original_image = np.array(pil_image)
+    scale = min(512 / pil_image.width, 512 / pil_image.height)
+    resized_image = pil_image.resize((int(pil_image.width * scale), int(pil_image.height * scale)))
+    resized_image_array = np.array(resized_image)
 
-    # Scan directory for JPEG images
-    for filename in os.listdir(source_dir):
-        print("processing faces, file ",filename)
-        if filename.lower().endswith('.jpg'):
+    face_locations = detect_faces(resized_image_array)
 
-            image_path = os.path.join(source_dir, filename)
-            try:
-                with Image.open(image_path) as img:
-                    resized_image, scale = resize_image_for_detection(img)
-                    image_array = np.array(resized_image)
-                    face_locations = face_recognition.face_locations(image_array,model="large")
+    rotation_degree = 0
+    if not face_locations:
+        # Rotate the image by 90° and try again
+        rotated_resized_image = resized_image.rotate(90, expand=True)
+        rotated_resized_image_array = np.array(rotated_resized_image)
+        face_locations = detect_faces(rotated_resized_image_array)
+        rotation_degree=90
+        if not face_locations:
+            rotated_resized_image = resized_image.rotate(-90, expand=True)
+            rotated_resized_image_array = np.array(rotated_resized_image)
+            face_locations = detect_faces(rotated_resized_image_array)
+            rotation_degree = -90 
 
-                    if face_locations:
-                        # Calculate face areas on the resized image
-                        face_areas = [(bottom - top) * (right - left) for top, right, bottom, left in face_locations]
-                        largest_area_index = face_areas.index(max(face_areas))
-                        largest_face_area = face_areas[largest_area_index] / (scale ** 2)  # Adjust to original image size
-                        largest_face_location = face_locations[largest_area_index]
-                        # Adjust face location to original image size
-                        adjusted_location = tuple(int(coord / scale) for coord in largest_face_location)
-                        files_faces_locations.append((filename, largest_face_area, adjusted_location))
-            except Exception as e:
-                print(f"Failed to process {filename}: {e}")
-                shutil.move(image_path, os.path.join(corrupted_folder, filename))
-                corruptedFiles.append(filename)
-                continue 
+    if not face_locations:
+        return [],0
 
+    top, right, bottom, left = face_locations[0]
+    original_box = [left / scale, top / scale, right / scale, bottom / scale]
 
-    # Sort by face area
-    files_faces_locations.sort(key=lambda x: x[1], reverse=True)
+    if rotation_degree != 90:
+        original_box = adjust_box_for_rotation(original_box, rotation_degree)
 
-    # Select top x%
-    num_files_to_modify = int(len(files_faces_locations) * (percentageToFaceCrop / 100))
-    selected_files = files_faces_locations[:num_files_to_modify]
+    # Expand the box
+    width_expand = (original_box[2] - original_box[0]) * expand_percentage / 100
+    height_expand = (original_box[3] - original_box[1]) * expand_percentage / 100
 
-    # Process selected images
-    # Process selected images
-    for filename, _, face_location in selected_files:
-        if filename in corruptedFiles:
-            continue
-        image_path = os.path.join(source_dir, filename)
-        with Image.open(image_path) as img:
-            original_width, original_height = img.size
-            top, right, bottom, left = face_location
+    expanded_box = [
+        max(0, original_box[0] - width_expand),
+        max(0, original_box[1] - height_expand),
+        min(pil_image.width, original_box[2] + width_expand),
+        min(pil_image.height, original_box[3] + height_expand)
+    ]
 
-            # Calculate initial crop dimensions with added border
-            borderX = 0.3 * (right - left)
-            borderY = 0.3 * (bottom - top)
-            left = max(left - borderX, 0)
-            right = min(right + borderX, original_width)
-            top = max(top - borderY, 0)
-            bottom = min(bottom + borderY, original_height)
-
-            # Calculate the actual width and height after adding the border
-            width = right - left
-            height = bottom - top
-
-            # Ensure minimum crop dimensions
-            if width < min_crop_dimension:
-                shortfall = min_crop_dimension - width
-                # Adjust left and right, ensuring not to exceed the image bounds
-                left = max(left - shortfall / 2, 0)
-                right = min(right + shortfall / 2, original_width)
-                if right - left < min_crop_dimension:  # Check if adjustments were not enough
-                    if left == 0:  # If left is at bound, extend right as much as possible
-                        right = min_crop_dimension
-                    if right == original_width:  # If right is at bound, extend left as much as possible
-                        left = original_width - min_crop_dimension
-
-            if height < min_crop_dimension:
-                shortfall = min_crop_dimension - height
-                # Adjust top and bottom, ensuring not to exceed the image bounds
-                top = max(top - shortfall / 2, 0)
-                bottom = min(bottom + shortfall / 2, original_height)
-                if bottom - top < min_crop_dimension:  # Check if adjustments were not enough
-                    if top == 0:  # If top is at bound, extend bottom as much as possible
-                        bottom = min_crop_dimension
-                    if bottom == original_height:  # If bottom is at bound, extend top as much as possible
-                        top = original_height - min_crop_dimension
-
-            # Final cropping operation
-            cropped_image = img.crop((left, top, right, bottom))
-            cropped_image.save(image_path)
-            modified_files.append(filename)
+    return expanded_box,len(face_locations)
 
 
-    return modified_files
+def save_image_box(pil_image, face_box, save_path):
+    """
+    Draws a rectangle around the face and saves the image.
+    
+    Parameters:
+    - pil_image: PIL Image object of the original image.
+    - face_box: The coordinates of the face box as a tuple (left, top, right, bottom).
+    - save_path: Path where the modified image will be saved.
+    """
+    # Create a drawing context
+    face=pil_image.copy()
+    draw = ImageDraw.Draw(face)
+    
+    # Draw the rectangle around the face
+    # Note: The 'outline' parameter color and width can be changed as needed
+    if face_box:
+        draw.rectangle(face_box, outline="red", width=3)
+    
+    # Save the image with the rectangle
+    face.save(save_path)
 
+def crop_resize(pil_image, target_size, face_box):
+    """
+    Crops the PIL image to the given aspect ratio, ensuring the face box is included.
+    
+    Parameters:
+    - pil_image: The original PIL Image object.
+    - target_size: Tuple (target_width, target_height) indicating the desired aspect ratio.
+    - face_box: The coordinates of the face box as a tuple (left, top, right, bottom).
+    
+    Returns:
+    - Cropped PIL image.
+    """
+    original_width, original_height = pil_image.size
+    target_width, target_height = target_size
+    
+    # Calculate the target aspect ratio and the original aspect ratio
+    target_aspect = target_width / target_height
+    original_aspect = original_width / original_height
+    
+    # Calculate the dimensions of the maximum possible crop that respects the target aspect ratio
+    if target_aspect > original_aspect:
+        # Width is the limiting factor
+        crop_width = original_width
+        crop_height = int(crop_width / target_aspect)
+    else:
+        # Height is the limiting factor
+        crop_height = original_height
+        crop_width = int(crop_height * target_aspect)
+    
+    # Determine the initial centered crop box
+    left = (original_width - crop_width) / 2
+    top = (original_height - crop_height) / 2
+    right = left + crop_width
+    bottom = top + crop_height
+    
+    if face_box:
+        # Adjust the crop box to ensure it includes the face box, if possible
+        face_left, face_top, face_right, face_bottom = face_box
+        
+        # Check if face box is wider or taller than the crop area and adjust
+        if face_right - face_left > crop_width:
+            # Face box is wider than the crop area
+            # Center the crop around the face box horizontally
+            center_x = (face_left + face_right) / 2
+            left = max(0, center_x - crop_width / 2)
+            right = left + crop_width
+        elif face_bottom - face_top > crop_height:
+            # Face box is taller than the crop area
+            # Center the crop around the face box vertically
+            center_y = (face_top + face_bottom) / 2
+            top = max(0, center_y - crop_height / 2)
+            bottom = top + crop_height
+        else:
+            # Adjust horizontally if needed
+            if face_left < left:
+                left -= min(left - face_left, left)
+                right = left + crop_width
+            elif face_right > right:
+                right += min(face_right - right, original_width - right)
+                left = right - crop_width
+                
+            # Adjust vertically if needed
+            if face_top < top:
+                top -= min(top - face_top, top)
+                bottom = top + crop_height
+            elif face_bottom > bottom:
+                bottom += min(face_bottom - bottom, original_height - bottom)
+                top = bottom - crop_height
+    
+    # Perform the crop
+    cropped_image = pil_image.crop((int(left), int(top), int(right), int(bottom)))
+    
+    return cropped_image.resize(target_size,resample=Image.LANCZOS)
 
-
+def discard (filepath,targetDir):
+    subdir, filename = os.path.split(filepath)
+    shutil.move(filepath, os.path.join(targetDir, filename))
 
 def process_images(config):
     corrupted_folder = tools.createFolders(config['sourceDir'], "corrupted")
     source_dir = config['sourceDir']
-    crop_percentage = config['faceCrop']['percentageToFaceCrop']
-    max_dimension = config['resize']['maxDimension']
-    percentage_to_crop = config['cropBorders']['percentageToCrop']
+    dimension = config['resize']['dimension']
+    eliminateMutliFaces=config["filter"]["eliminateMutliFaces"]
+    eliminateNoiFace=config["filter"]["eliminateNoiFace"]
+    #percentage_to_crop = config['cropBorders']['percentageToCrop']
 
+    excluded_folder = tools.createFolders(source_dir, "wrongNumberOfFaces")
+    corrupted_folder = tools.createFolders(source_dir, "corrupted")
 
-    facesImg=processFaces(config["faceCrop"],source_dir,corrupted_folder)
+    files=os.listdir(source_dir)
 
-
-    for filename in os.listdir(source_dir):
-        print("processing ",filename)
-        if filename.endswith(('.jpg')):
-            file_path = os.path.join(source_dir, filename)
+    rejected=0
+    processed=0
+    for filename in tqdm(files,desc="crop&resize"):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            image_path = os.path.join(source_dir, filename)
             try:
-                # Open the image
-                img = Image.open(file_path)
+                pil_image = Image.open(image_path)
+                face_box,numFaces = locate_and_expand_face(pil_image, 30)
+                if numFaces==0 and eliminateNoiFace:
+                    discard(image_path,excluded_folder)
+                    rejected+=1
+                elif numFaces>1 and eliminateMutliFaces:
+                    discard(image_path,excluded_folder)
+                    rejected+=1
+                else:
+                    processed+=1
+                    cropped_and_resized_image = crop_resize(pil_image, dimension, face_box)
+                    cropped_and_resized_image.save(image_path)  # Overwrite the original image
+                    print(f"Processed and saved {filename}")
             except Exception as e:
-                print(f"Failed to process {filename}: {e}")
-                shutil.move(file_path, os.path.join(corrupted_folder, filename))
-                continue 
-            
+                discard(image_path,corrupted_folder)
+                print(f"Error processing {filename}: {e}")
 
-            if not filename in facesImg:
-                if config['cropBorders']['enable']:
-                    img = crop_borders(img, percentage_to_crop)
+    logger.console(f"Moved {rejected} files to {excluded_folder} folder")
+    logger.console(f"Processed {processed} files")
 
-            if config['resize']['enable']:
-                img = resize_image(img, max_dimension)
 
-    
-            
-            img.save(file_path)  # Overwrite the original image
+# Example usage
+if __name__ == "__main__":
+    directory="C:\\Users\\Nicolas\\sandbox\\nsfw_image\\training\\ella\\working_images\\real_images_captionned"
+
+    for filename in os.listdir(directory):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            image_path = os.path.join(directory, filename)
+            try:
+                pil_image = Image.open(image_path)
+                face_box = locate_and_expand_face(pil_image, 30)
+                cropped_and_resized_image = crop_resize(pil_image, (512,512), face_box)
+                cropped_and_resized_image.save(image_path)  # Overwrite the original image
+                print(f"Processed and saved {filename}")
+            except Exception as e:
+                print(f"Error processing {filename}: {e}")
+
 

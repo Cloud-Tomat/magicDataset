@@ -15,10 +15,26 @@ import os
 import io
 import requests
 from urllib.parse import urlparse, parse_qs
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
 import time
 import threading
+import urllib3
+from tqdm import tqdm
+import logger
+
+
+
+
+
+#disable certificate warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+URL = 'https://yandex.com/images/'
+SEARCH_BUTTON_CLASS="websearch-button.mini-suggest__button"
+SEARCH_INPUT_CLASS="input__control.mini-suggest__input"
+SHOW_MORE_BUTTON_CLASS=".Button2.Button2_width_max.Button2_size_l.Button2_view_action.FetchListButton-Button"
+IMGS_CLASS="a.Link.ContentImage-Cover"
 
 
 class imageCrawler():
@@ -26,6 +42,7 @@ class imageCrawler():
         # Set up Chrome options
         chrome_options = Options()
         if not debug:
+            chrome_options.add_argument('--log-level=3') 
             chrome_options.add_argument("--headless")  # Ensure GUI is off
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
@@ -70,56 +87,52 @@ class imageCrawler():
             print(f"Error downloading {image_url}: {e}")
 
 
-
-    def extract_and_download_images(self,driver, save_folder, processed_images=None, maxImages=None, minSize=0):
+    def extract_and_download_images(self, driver, save_folder, processed_images=None, maxImages=None, minSize=0):
         if processed_images is None:
             processed_images = set()
 
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
+        
+        image_links = driver.find_elements(By.CSS_SELECTOR, IMGS_CLASS)  # Assuming IMGS_CLASS is defined elsewhere
 
-        image_links = driver.find_elements(By.CSS_SELECTOR, ".SerpItem .Link.SimpleImage-Cover")
-
-        # Use a lock for thread-safe incrementing of numImages
         lock = threading.Lock()
         numImages = 0
 
-        # Define a function to process each download task
         def process_download_task(link):
             nonlocal numImages
             with lock:
                 if maxImages is not None and numImages >= maxImages:
-                    return  # Stop if maxImages reached
-
+                    return  # Skip processing this task            
             href = link.get_attribute('href')
             parsed_url = urlparse(href)
             query_params = parse_qs(parsed_url.query)
             img_url = query_params.get('img_url', [None])[0]
 
             if img_url and img_url not in processed_images:
-                print(f"Downloading new image: {img_url}")
-                if self.download_image(img_url, save_folder, f"image_{len(processed_images)+1}.jpg", minSize):
+                if self.download_image(img_url, save_folder, f"image_{len(processed_images) + 1}.jpg", minSize):
                     with lock:
                         numImages += 1  # Safely increment numImages
                 processed_images.add(img_url)
+            return img_url
 
         # Use ThreadPoolExecutor to download images concurrently
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
+            i=0
             for link in image_links:
                 with lock:
                     if maxImages is not None and numImages >= maxImages:
-                        break  # Stop submitting tasks if maxImages reached
-                futures.append(executor.submit(process_download_task, link))
+                        break  # Cease to submit new tasks if maxImages reached
+                future = executor.submit(process_download_task, link)
+                futures.append(future)
 
-            # Wait for all futures to complete
-            concurrent.futures.wait(futures)
+            # Wait for all futures to complete and show progress
+            for _ in tqdm(as_completed(futures), total=len(futures), desc="Downloading images candidate"):
+                pass  # The progress update is handled by tqdm; no need to do anything in the loop
 
         print(f"Total images downloaded: {numImages}")
         return processed_images, numImages
-
-
-
 
 
 
@@ -151,13 +164,15 @@ class imageCrawler():
     # Function to click the "Show more" button
     def click_show_more_button(self,driver):
         try:
-            # Wait for the "Show more" button to be clickable
+            # Wait for the "Show more" button to be clickable, selecting by button text
+            #show_more_button = WebDriverWait(driver, 10).until(
+            #    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Show more')]"))
+            #)
+
             show_more_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".Button2.Button2_width_max.Button2_size_l.Button2_view_action.SerpList-LoadButton"))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, SHOW_MORE_BUTTON_CLASS))
             )
 
-            # Click the "Show more" button
-            #show_more_button.click()
             # Give focus to the "Show more" button
             show_more_button.send_keys(Keys.NULL)
 
@@ -170,7 +185,6 @@ class imageCrawler():
             print(f"Error clicking the 'Show more' button: {e}")
             return False
 
-
     def download(self,search_text,saveFolder,minSize=0,maxNumberImages=None):
 
         if not os.path.exists(saveFolder):
@@ -181,18 +195,17 @@ class imageCrawler():
         with open(file_path, 'w') as file:
             file.write(search_text)
 
-        # URL to navigate to
-        URL = 'https://yandex.com/images/'
+ 
 
-        # Open the specified URL
+        # Delete cookies, seems to avoid CAPTCHA after several downloads
+        self.driver.delete_all_cookies()
+        wait = WebDriverWait(self.driver, 1)  # Wait for up to 10 seconds
+
         self.driver.get(URL)
         wait = WebDriverWait(self.driver, 1)  # Wait for up to 10 seconds
 
-
-        # Assuming the rest of your setup code remains the same
-
         # Locate the search input field
-        search_input = self.driver.find_element(By.CLASS_NAME, "input__control.mini-suggest__input")
+        search_input = self.driver.find_element(By.CLASS_NAME, SEARCH_INPUT_CLASS)
 
         # Clear the search field if needed
         search_input.clear()
@@ -201,34 +214,37 @@ class imageCrawler():
 
         search_input.send_keys(search_text)
 
-        # Wait a moment for suggestions to load (optional, you can adjust the time as needed)
+        # Wait a moment for suggestions to load 
         time.sleep(1)
 
         #  locate and click the search button
-        search_button = self.driver.find_element(By.CLASS_NAME, "websearch-button.mini-suggest__button")
+        search_button = self.driver.find_element(By.CLASS_NAME, SEARCH_BUTTON_CLASS)
         search_button.click()
 
         time.sleep(5)
 
-        # Assuming driver is already initialized and the page is loaded
-        self.scroll_to_bottom(self.driver)
-
-
-        # First call to download initial images
-        processed_images,numImages = self.extract_and_download_images(self.driver,saveFolder,maxImages=maxNumberImages,minSize=minSize)
-
-        totalImages=numImages
-        success=self.click_show_more_button(self.driver)
-        while success and totalImages<maxNumberImages:
-
+        #Some init
+        success=True
+        page=1
+        totalImages=0
+        processed_images=None
+        while success and totalImages < maxNumberImages:
+            logger.console(f"Processing page {page}")
             self.scroll_to_bottom(self.driver)
-            # Call the function again with the set of processed images
-            processed_images,numImages = self.extract_and_download_images(self.driver,saveFolder, processed_images=processed_images,minSize=minSize)
-            totalImages+=numImages
-            time.sleep(5)
-            success=self.click_show_more_button(self.driver)
+
+            processed_images, numImages = self.extract_and_download_images(self.driver, saveFolder, processed_images=processed_images, maxImages=maxNumberImages-totalImages,minSize=minSize)
+            totalImages += numImages
+            logger.console(f"Downloaded {numImages} images from page {page}, {totalImages} images in total")
+            
+            time.sleep(2)
+            success = self.click_show_more_button(self.driver)
+            page+=1
+
+
+
 
         return totalImages
+
 
 
 

@@ -6,7 +6,8 @@ from qna import qnaClass
 import json
 import re
 import tools
-
+from tqdm import tqdm
+import logger
 
 def discard (filepath,targetDir):
     subdir, filename = os.path.split(filepath)
@@ -76,7 +77,10 @@ def filterAndCaption(params):
 
     qna=qnaClass()
 
-    for filename in os.listdir(base_folder):
+    files=os.listdir(base_folder)
+    removed=0
+    captionned=0
+    for filename in tqdm(files,desc="captionning and QA filter"):
 
         print("processing ",filename)
         file_path = os.path.join(base_folder, filename)
@@ -85,7 +89,7 @@ def filterAndCaption(params):
         if os.path.isdir(file_path):
             continue
 
-        if not filename.endswith('.jpg'):
+        if not filename.endswith('.jpg') and  not filename.endswith('.png'):
             continue
 
         print(f"Processing {file_path}")
@@ -101,8 +105,9 @@ def filterAndCaption(params):
         
         qna.loadImage(raw_image)                
         if process_image(qna,file_path,params["questions"],excluded_folder):
+            captionned+=1
             generate_caption(qna,file_path,params["caption"])
-
-
-        #if process_image(file_path, qa_pairs):
-        #    generate_caption(file_path, template)
+        else:
+            removed+=1
+    logger.console(f"Captionned {captionned} files")
+    logger.console(f"Moved {removed} files to {excluded_folder} folder")

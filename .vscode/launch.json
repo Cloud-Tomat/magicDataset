@@ -10,7 +10,8 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": "${command:pickArgs}"
+            "args": "perso/nsfw.yaml"
+            //"args": "${command:pickArgs}"
         }
     ]
 }
