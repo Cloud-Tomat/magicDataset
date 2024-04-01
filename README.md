@@ -72,7 +72,31 @@ Then, install the rest of the dependencies from your `requirement.txt` file:
 pip install -r requirement.txt
 ```
 * Linux
-TODO
+Install torch with CUDA support
+```cmd
+pip install torch==2.2.1+cu121 -f https://download.pytorch.org/whl/torch_stable.html
+```
+
+
+Install Packaged required to build dlib (ubuntu distribs)
+```cmd
+sudo apt install libopenblas-dev liblapack-dev
+sudo apt install cmake
+sudo apt update && sudo apt-get install build-essential
+sudo apt install python[version]-dev
+sudo apt-get install libgl1
+'''
+
+Install Chrome if not already done
+```cmd
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install ./google-chrome-stable_current_amd64.deb
+'''
+
+And finally install requirements
+```cmd
+pip install -r requirement-linux.txt
+```
 
 ## Running the Application
 
