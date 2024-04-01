@@ -60,17 +60,20 @@ You should now see `(magicDataset)` at the beginning of your command prompt line
 ### Install Dependencies
 
 #### Windows
-Install torch with CUDA support
+* Install torch with CUDA support
 
 ```cmd
 pip install torch==2.2.1+cu121 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
-Install dlib 
+* Install Chrome if not already done
+
+* Install dlib 
 Follow the instructions here : 
+
 https://medium.com/analytics-vidhya/how-to-install-dlib-library-for-python-in-windows-10-57348ba1117f
 
-Then, install the rest of the dependencies from your `requirement.txt` file:
+* Then, install the rest of the dependencies from your `requirement.txt` file:
 
 ```cmd
 pip install -r requirement.txt
@@ -116,38 +119,113 @@ Activate the virtual environment if not already done
 
 run the script
 ```cmd
-python magicDataset.py your_configuration_file.yaml
+python magicDataset.py examples/full_example.yaml
 ```
 
-## Features
+## yaml file description
 
-### Image Crawling
-- **Engine**: Utilizes Yandex for image search with plans to support more engines in the future.
-- **Searches**: Perform specified searches with queries and desired number of images.
-- **Minimum Resolution**: Only downloads images above a certain resolution threshold.
+### General configuration
 
-### Duplicate Image Filtering
-- Filters out duplicate images based on hash distance to ensure dataset uniqueness.
+Pass where to place the image
+```cmd
+outDir: &outDir "output"
+```
+CUDA device to use in PCI ID order
+```cmd
+cudaDevice : 1
+```
 
-### Crop and Resize
-- **Resize**: Automatically resizes images larger than specified dimensions.
-- **Face Crop**: Crops images to focus on faces, adjustable by the percentage of the biggest face.
-- **Crop Borders**: Refines image focus by cropping borders by a specified percentage.
+Each section are optionnal
+### Search Section
+```cmd
+search:
+  enable: true        #enable serach module
+  engine: yandex      #image search engine, today support yandex, more will come in the future
+  targetDir: *outDir  #path of the target directory for download
+  debug : false       #show actions in chrome browser visible or not
+  minResolution: 2    #Minimum image resolution in MegaPixel
+  searchs:            #list of search to perform [search request, number of images]
+    - [photo of a man, 100] #will download 100 images matching with min resolution of 2M 
+    - [indian man, 50] #will download 50 images matching with min resolution of 2M
+```
 
-### LAVIS Filter and Captioning
-- Filters images based on LAVIS question / expected answers
-- Generates captions using LAVIS based on question-and-answer pairs and predefined templates.
+### Remove duplicate
+Move similar image and place them in duplicate folder
+```cmd
+duplicateFilter:
+  enable: true       #enable this filter
+  sourceDir: *outDir  #where are the file to analyze
+  threshold: 5        #hash distance, below image are considered identical
 
-### Watermark Filter
-- Removes watermarked images to clean the dataset, focusing on a central crop for effective watermark detection.
+```
+### Remove duplicate
+Move watermarked image to watermked folder
+This filter just detect if there is a text in the central part of the image
+```cmd
+watermarkFilter:
+  enable: true
+  sourceDir: *outDir    #where are the file to analyze  
+  #watermak search will be performed on a temporary center crop
+  #this avoid to consider signature and small corner overlay text
+  searchCropPercent: 70
+```
+### Crop & Resize
+This part does the following:
+* Crop
+Perform a crop to the maximum possible size to have the specified homothetic ratio.
+In the example below we ask for 512x512 image meaning the crop will be the biggest possible size.
+If keepFace is enabled, the algorithm ensure that the bigest face in the image will be in the crop area, usefull when the face is not in the center part of the image (for instance a personn standing).
+If not enabled or if no face are detected perform a central crop.
+* Resize
+Resize the image to the specified dimension.
+* Filter per number of faces
+You can specify here to move image to wrongNumberofFace folder if more than one face or no face are detected.
 
-## Configuration
+```cmd
+cropAndResize:
+  enable: true          #enable this feature
+  sourceDir: *outDir    #where are the file to analyze
+  #Kohya doesn't like very large image
+  resize:
+    enable: true          #enable large image resize
+    dimension: [512,512]  #homothetic resizing to this max dimension
+    keepFace: True
+  filter:
+    eliminateMutliFaces: true   #remove photo with more than 1 face  
+    eliminateNoiFace: true   #remove photo with No  face
+```
+### Q&A filter & Captionning
 
-The tool is configurable through a YAML file, allowing for detailed customization of its operation, including:
-- CUDA device selection for processing.
-- Target directory for saving downloaded images.
-- Debug mode for browser action visibility.
-- Configurations for search parameters, duplicate filtering, image cropping, resizing, and more.
+This is the cherry on the cake. This section allows to :
+* Filter image based on question and answer resulting BLIP image to text
+  just ask question and tell what are the expected answer.
+  If expected answer doesn't match, move the image to discarded folder.
+* Caption the image based on a template pattern
+Just type the caption text, insert between { } the question to BLIP specifying min and max length
+
+
+```cmd
+lavisFilterAndCaption:
+  enable: true        #enable this filter
+  sourceDir: *outDir    #where are the file to analyze
+  #list of question and expected answers, if answer of lavis not in expected answer,
+  #image will be mvoe to discarded foldere
+  questions:
+    - question: "is it a man?"
+      expectedAnswers: ["yes","man"]
+
+    - question: "face visible?"
+      expectedAnswers: ["yes"]
+
+    - question: "is it a color photo?"
+      expectedAnswers: ["yes"]
+  #template for captionning
+  #Question between { }, 3 arguments expected, the question, min answer length and max answer length
+  caption: "a man,  {describe face emotion.,1,1} face, {ethnicity of the person,1,1} ethnicty, {describe the clothes.,5,8}, {describe hair., 1,1} hairs,  {describe the background.,5,8} background"
+
+```
+
+
 
 ## Usage
 
