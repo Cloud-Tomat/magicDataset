@@ -66,6 +66,10 @@ Install torch with CUDA support
 pip install torch==2.2.1+cu121 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
+Install dlib 
+Follow the instructions here : 
+https://medium.com/analytics-vidhya/how-to-install-dlib-library-for-python-in-windows-10-57348ba1117f
+
 Then, install the rest of the dependencies from your `requirement.txt` file:
 
 ```cmd
